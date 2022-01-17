@@ -1,0 +1,45 @@
+#!/usr/bin/env node
+
+const puppeteer = require("puppeteer");
+
+(async () => {
+  const browser = await puppeteer.launch();
+  try {
+    const today = new Date();
+    const date = process.argv[2] || today.toISOString().match(/\d\d\d\d\-\d\d\-\d\d/)[0];
+    const dateArgs = date.split("-").map((val, idx) => {
+      const correction = idx === 1 ? 1 : 0;
+      return parseInt(val) - correction;
+    });
+    const givenDate = +new Date(...dateArgs);
+    browser.on("targetchanged", async (target) => {
+      const targetPage = await target.page();
+      const client = await targetPage.target().createCDPSession();
+      const MockDate = class extends Date {
+        static Today = 0;
+        constructor(options) {
+          if (options) {
+            super(...arguments);
+          } else {
+            super(Date.now() + (Date.Today - Date.now()));
+          }
+        }
+      };
+      await client.send("Runtime.evaluate", {
+        expression: `Date = ${MockDate};Date.Today = ${givenDate}`,
+      });
+    });
+    const page = await browser.newPage();
+    await page.goto("https://www.powerlanguage.co.uk/wordle/");
+    const result = await page.evaluate(() => {
+      return Promise.resolve(new wordle.bundle.GameApp().solution);
+    });
+    console.log(`Wordle answer for date: ${date}`);
+    console.log(result);
+  } catch(err) {
+    console.log("Ensure your date is valid and not too far in the past.");
+    console.log("Example:");
+    console.log("./wordle-cheat 2022-01-19");
+  }
+  await browser.close();
+})();
